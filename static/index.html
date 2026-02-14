@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sabong Saga Bot Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg2: #12121a;
+  --bg3: #1a1a28;
+  --border: #2a2a3d;
+  --text: #e0e0ec;
+  --text2: #8888aa;
+  --accent: #ff6b35;
+  --accent2: #ff9f1c;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --yellow: #f1c40f;
+  --blue: #3498db;
+  --purple: #9b59b6;
+  --radius: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Login Screen */
+.login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a0f 0%, #1a1028 50%, #0a0a0f 100%);
+}
+
+.login-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 48px;
+  width: 400px;
+  text-align: center;
+}
+
+.login-box h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.login-box .subtitle {
+  color: var(--text2);
+  margin-bottom: 32px;
+  font-size: 14px;
+}
+
+.login-box .emoji { font-size: 48px; margin-bottom: 16px; display: block; }
+
+/* Form Elements */
+input, select, textarea {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+
+textarea { resize: vertical; min-height: 60px; }
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.form-group { margin-bottom: 16px; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Buttons */
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+}
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+.btn-success { background: var(--green); color: #fff; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.btn-ghost:hover { border-color: var(--text); color: var(--text); }
+.btn-sm { padding: 8px 16px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Toggle Switch */
+.toggle-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg3);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.toggle-label { font-size: 13px; }
+
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.toggle input { display: none; }
+
+.toggle .slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 24px;
+  transition: 0.2s;
+}
+
+.toggle .slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.toggle input:checked + .slider { background: var(--green); }
+.toggle input:checked + .slider::before { transform: translateX(20px); }
+
+/* Layout */
+.app { display: none; }
+.app.active { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 260px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.sidebar-brand .icon { font-size: 28px; }
+.sidebar-brand h2 {
+  font-size: 16px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.account-list { flex: 1; overflow-y: auto; }
+
+.account-card {
+  padding: 12px;
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+.account-card:hover { background: var(--bg3); }
+.account-card.active { border-color: var(--accent); background: var(--bg3); }
+
+.account-card .name { font-weight: 600; font-size: 14px; }
+.account-card .info { font-size: 11px; color: var(--text2); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+
+.account-card .status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.status-running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-stopped { background: var(--red); }
+
+.sidebar-footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+
+/* Main Content */
+.main {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  max-height: 100vh;
+}
+
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.main-header h1 { font-size: 24px; }
+
+/* Stats Cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+}
+
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.stat-card .label {
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+.stat-card .value.green { color: var(--green); }
+.stat-card .value.red { color: var(--red); }
+.stat-card .value.yellow { color: var(--yellow); }
+.stat-card .value.blue { color: var(--blue); }
+
+/* Panels */
+.panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-body { padding: 20px; }
+
+/* Log Viewer */
+.log-viewer {
+  background: #050508;
+  border-radius: var(--radius);
+  padding: 16px;
+  height: 400px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.log-entry { padding: 2px 0; }
+.log-entry .time { color: var(--text2); margin-right: 8px; }
+.log-entry.success .msg { color: var(--green); }
+.log-entry.error .msg { color: var(--red); }
+.log-entry.warn .msg { color: var(--yellow); }
+.log-entry.info .msg { color: var(--text); }
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal h2 { margin-bottom: 24px; font-size: 20px; }
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 80px 40px;
+  color: var(--text2);
+}
+.empty-state .icon { font-size: 64px; margin-bottom: 16px; display: block; }
+.empty-state h3 { color: var(--text); margin-bottom: 8px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app.active { flex-direction: column; }
+  .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+  .form-row { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <span class="emoji">🐔</span>
+    <h1>Sabong Saga</h1>
+    <p class="subtitle">Bot Dashboard</p>
+    <div class="form-group">
+      <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Login</button>
+    <p id="loginError" style="color:var(--red);font-size:12px;margin-top:12px;display:none"></p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      <span class="icon">🐔</span>
+      <div>
+        <h2>Sabong Saga</h2>
+        <span style="font-size:11px;color:var(--text2)">Bot Dashboard</span>
+      </div>
+    </div>
+    
+    <div class="account-list" id="accountList">
+      <!-- Accounts populated by JS -->
+    </div>
+    
+    <div class="sidebar-footer">
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="showAddAccount()">+ Add Account</button>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Logout">↩</button>
+    </div>
+  </div>
+  
+  <!-- Main Content -->
+  <div class="main" id="mainContent">
+    <div class="empty-state" id="emptyState">
+      <span class="icon">🐣</span>
+      <h3>No account selected</h3>
+      <p>Add an account or select one from the sidebar</p>
+    </div>
+    
+    <div id="accountView" style="display:none">
+      <!-- Header -->
+      <div class="main-header">
+        <h1 id="viewTitle">Account</h1>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-success btn-sm" id="btnStart" onclick="startBot()">▶ Start Bot</button>
+          <button class="btn btn-danger btn-sm" id="btnStop" onclick="stopBot()" style="display:none">⏹ Stop Bot</button>
+          <button class="btn btn-ghost btn-sm" onclick="showEditAccount()">✏️ Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteAccount()" style="color:var(--red)">🗑️</button>
+        </div>
+      </div>
+      
+      <!-- Stats -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="value green" id="statWins">0</div><div class="label">Wins</div></div>
+        <div class="stat-card"><div class="value red" id="statLosses">0</div><div class="label">Losses</div></div>
+        <div class="stat-card"><div class="value yellow" id="statDraws">0</div><div class="label">Draws</div></div>
+        <div class="stat-card"><div class="value blue" id="statMMR">0</div><div class="label">MMR Change</div></div>
+        <div class="stat-card"><div class="value" id="statRound">0</div><div class="label">Round</div></div>
+        <div class="stat-card"><div class="value" id="statChicken">-</div><div class="label">Active Chicken</div></div>
+      </div>
+      
+      <!-- Config Summary -->
+      <div class="panel">
+        <div class="panel-header">Configuration</div>
+        <div class="panel-body" id="configSummary" style="font-size:13px;line-height:2">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      
+      <!-- Live Log -->
+      <div class="panel">
+        <div class="panel-header">
+          Live Log
+          <button class="btn btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
+        </div>
+        <div class="log-viewer" id="logViewer">
+          <div class="log-entry info"><span class="msg">Waiting for bot to start...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT ACCOUNT MODAL -->
+<div class="modal-overlay" id="accountModal">
+  <div class="modal">
+    <h2 id="modalTitle">Add Account</h2>
+    <input type="hidden" id="editAccountId">
+    
+    <div class="form-group">
+      <label>Nickname</label>
+      <input type="text" id="fNickname" placeholder="e.g. slim">
+    </div>
+    
+    <div class="form-group">
+      <label>Wallet Address</label>
+      <input type="text" id="fAddress" placeholder="0x...">
+    </div>
+    
+    <div class="form-group">
+      <label>JWT Token</label>
+      <textarea id="fJwt" placeholder="eyJhb..."></textarea>
+    </div>
+    
+    <div class="form-group">
+      <label>CSRF Secret</label>
+      <input type="text" id="fCsrf" placeholder="VeTXMPhBzWCRRpSJe8Yz7VFm" value="VeTXMPhBzWCRRpSJe8Yz7VFm">
+    </div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>Primary Chicken ID</label>
+        <input type="number" id="fPrimary" placeholder="e.g. 11305">
+      </div>
+      <div class="form-group">
+        <label>Min Boosters</label>
+        <input type="number" id="fBoosters" value="0">
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label>Backup Chickens (comma separated)</label>
+      <input type="text" id="fBackups" placeholder="e.g. 1704, 248, 302, 1016, 249, 303">
+    </div>
+    
+    <div class="form-group">
+      <label>Battle Items Priority (comma separated)</label>
+      <input type="text" id="fItems" placeholder="e.g. 54, 97, 90, 47, 45, 98" value="54, 97, 90, 47, 45, 98">
+    </div>
+    
+    <div class="form-group">
+      <label>Min Affection</label>
+      <input type="number" id="fMinAffection" value="90">
+    </div>
+    
+    <div style="margin-bottom:24px">
+      <div class="toggle-wrap">
+        <span class="toggle-label">Check Affection (require 90+)</span>
+        <label class="toggle"><input type="checkbox" id="fCheckAffection"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-wrap">
+        <span class="toggle-label">Use Backup Chickens</span>
+        <label class="toggle"><input type="checkbox" id="fUseBackups" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-wrap">
+        <span class="toggle-label">Require Immortal (Primary)</span>
+        <label class="toggle"><input type="checkbox" id="fImmortal" checked><span class="slider"></span></label>
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAccount()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========================
+// State
+// =========================
+let token = localStorage.getItem('sabong_token') || '';
+let accounts = [];
+let selectedId = null;
+let ws = null;
+
+const API = window.location.origin;
+
+// =========================
+// API Helper
+// =========================
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+  if (body) opts.body = JSON.stringify(body);
+  
+  const r = await fetch(`${API}${path}`, opts);
+  if (r.status === 401) {
+    token = '';
+    localStorage.removeItem('sabong_token');
+    showLogin();
+    throw new Error('Unauthorized');
+  }
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.detail || 'Request failed');
+  }
+  return r.json();
+}
+
+// =========================
+// Auth
+// =========================
+async function doLogin() {
+  const pw = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  try {
+    const data = await api('POST', '/api/login', { password: pw });
+    token = data.token;
+    localStorage.setItem('sabong_token', token);
+    showApp();
+  } catch (e) {
+    errEl.textContent = 'Wrong password';
+    errEl.style.display = 'block';
+  }
+}
+
+function doLogout() {
+  token = '';
+  localStorage.removeItem('sabong_token');
+  if (ws) ws.close();
+  showLogin();
+}
+
+function showLogin() {
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').classList.remove('active');
+}
+
+async function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').classList.add('active');
+  await loadAccounts();
+}
+
+// =========================
+// Accounts
+// =========================
+async function loadAccounts() {
+  try {
+    accounts = await api('GET', '/api/accounts');
+    renderAccountList();
+    if (selectedId) {
+      const acc = accounts.find(a => a.id === selectedId);
+      if (acc) renderAccountView(acc);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderAccountList() {
+  const el = document.getElementById('accountList');
+  if (!accounts.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text2);font-size:13px">No accounts yet</div>';
+    return;
+  }
+  el.innerHTML = accounts.map(a => `
+    <div class="account-card ${a.id === selectedId ? 'active' : ''}" onclick="selectAccount(${a.id})">
+      <div class="name"><span class="status ${a.bot_running ? 'status-running' : 'status-stopped'}"></span>${a.nickname}</div>
+      <div class="info">#${a.primary_chicken} · JWT: ${a.jwt_hours_left.toFixed(1)}h</div>
+    </div>
+  `).join('');
+}
+
+function selectAccount(id) {
+  selectedId = id;
+  const acc = accounts.find(a => a.id === id);
+  if (!acc) return;
+  renderAccountList();
+  renderAccountView(acc);
+  connectWS(id);
+}
+
+function renderAccountView(acc) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('accountView').style.display = 'block';
+  document.getElementById('viewTitle').textContent = `${acc.nickname} — #${acc.primary_chicken}`;
+  
+  // Buttons
+  document.getElementById('btnStart').style.display = acc.bot_running ? 'none' : 'inline-flex';
+  document.getElementById('btnStop').style.display = acc.bot_running ? 'inline-flex' : 'none';
+  
+  // Stats
+  if (acc.bot_stats) {
+    document.getElementById('statWins').textContent = acc.bot_stats.wins;
+    document.getElementById('statLosses').textContent = acc.bot_stats.losses;
+    document.getElementById('statDraws').textContent = acc.bot_stats.draws;
+    document.getElementById('statMMR').textContent = (acc.bot_stats.total_mmr >= 0 ? '+' : '') + acc.bot_stats.total_mmr;
+  }
+  
+  // Config summary
+  const backups = Array.isArray(acc.backup_chickens) ? acc.backup_chickens : JSON.parse(acc.backup_chickens || '[]');
+  const items = Array.isArray(acc.battle_items) ? acc.battle_items : JSON.parse(acc.battle_items || '[]');
+  
+  document.getElementById('configSummary').innerHTML = `
+    <div><strong>Wallet:</strong> <code style="font-size:11px;color:var(--text2)">${acc.address}</code></div>
+    <div><strong>JWT:</strong> <span style="color:${acc.jwt_hours_left < 2 ? 'var(--red)' : 'var(--green)'}">${acc.jwt_hours_left.toFixed(1)}h remaining</span></div>
+    <div><strong>Primary:</strong> #${acc.primary_chicken}</div>
+    <div><strong>Backups:</strong> ${acc.use_backup_chickens ? backups.map(b => '#'+b).join(', ') || 'None' : '<span style="color:var(--red)">Disabled</span>'}</div>
+    <div><strong>Battle Items:</strong> ${items.join(' → ') || 'None'}</div>
+    <div><strong>Affection Check:</strong> ${acc.check_affection ? '<span style="color:var(--green)">ON ('+acc.min_affection+'+)</span>' : '<span style="color:var(--text2)">OFF</span>'}</div>
+    <div><strong>Require Immortal:</strong> ${acc.require_immortal ? '<span style="color:var(--green)">Yes</span>' : '<span style="color:var(--text2)">No</span>'}</div>
+    <div><strong>Min Boosters:</strong> ${acc.min_boosters}</div>
+  `;
+}
+
+// =========================
+// WebSocket Live Logs
+// =========================
+function connectWS(accountId) {
+  if (ws) ws.close();
+  
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/${accountId}?token=${token}`);
+  
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'log') {
+      appendLog(msg.data);
+    } else if (msg.type === 'stats') {
+      updateStats(msg.data);
+    }
+  };
+  
+  ws.onclose = () => {
+    // Reconnect after 3s if still viewing same account
+    setTimeout(() => {
+      if (selectedId === accountId) connectWS(accountId);
+    }, 3000);
+  };
+}
+
+function appendLog(entry) {
+  const viewer = document.getElementById('logViewer');
+  const div = document.createElement('div');
+  div.className = `log-entry ${entry.level}`;
+  div.innerHTML = `<span class="time">${entry.time}</span><span class="msg">${escapeHtml(entry.msg)}</span>`;
+  viewer.appendChild(div);
+  viewer.scrollTop = viewer.scrollHeight;
+  
+  // Keep max 500 entries in DOM
+  while (viewer.children.length > 500) viewer.removeChild(viewer.firstChild);
+}
+
+function clearLogs() {
+  document.getElementById('logViewer').innerHTML = '';
+}
+
+function updateStats(data) {
+  document.getElementById('statWins').textContent = data.wins;
+  document.getElementById('statLosses').textContent = data.losses;
+  document.getElementById('statDraws').textContent = data.draws;
+  document.getElementById('statMMR').textContent = (data.total_mmr >= 0 ? '+' : '') + data.total_mmr;
+  document.getElementById('statRound').textContent = data.current_round;
+  document.getElementById('statChicken').textContent = data.current_chicken ? '#' + data.current_chicken : '-';
+  
+  // Update buttons
+  document.getElementById('btnStart').style.display = data.running ? 'none' : 'inline-flex';
+  document.getElementById('btnStop').style.display = data.running ? 'inline-flex' : 'none';
+  
+  // Update sidebar status
+  const acc = accounts.find(a => a.id === selectedId);
+  if (acc) {
+    acc.bot_running = data.running;
+    acc.bot_stats = data;
+    renderAccountList();
+  }
+}
+
+// =========================
+// Bot Control
+// =========================
+async function startBot() {
+  try {
+    await api('POST', `/api/bot/${selectedId}/start`);
+    await loadAccounts();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function stopBot() {
+  try {
+    await api('POST', `/api/bot/${selectedId}/stop`);
+    await loadAccounts();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// =========================
+// Account Modal
+// =========================
+function showAddAccount() {
+  document.getElementById('modalTitle').textContent = 'Add Account';
+  document.getElementById('editAccountId').value = '';
+  document.getElementById('fNickname').value = '';
+  document.getElementById('fAddress').value = '';
+  document.getElementById('fJwt').value = '';
+  document.getElementById('fCsrf').value = 'VeTXMPhBzWCRRpSJe8Yz7VFm';
+  document.getElementById('fPrimary').value = '';
+  document.getElementById('fBackups').value = '';
+  document.getElementById('fItems').value = '54, 97, 90, 47, 45, 98';
+  document.getElementById('fBoosters').value = '4';
+  document.getElementById('fMinAffection').value = '90';
+  document.getElementById('fCheckAffection').checked = false;
+  document.getElementById('fUseBackups').checked = true;
+  document.getElementById('fImmortal').checked = true;
+  document.getElementById('accountModal').classList.add('active');
+}
+
+function showEditAccount() {
+  const acc = accounts.find(a => a.id === selectedId);
+  if (!acc) return;
+  
+  const backups = Array.isArray(acc.backup_chickens) ? acc.backup_chickens : JSON.parse(acc.backup_chickens || '[]');
+  const items = Array.isArray(acc.battle_items) ? acc.battle_items : JSON.parse(acc.battle_items || '[]');
+  
+  document.getElementById('modalTitle').textContent = 'Edit Account';
+  document.getElementById('editAccountId').value = acc.id;
+  document.getElementById('fNickname').value = acc.nickname;
+  document.getElementById('fAddress').value = acc.address;
+  document.getElementById('fJwt').value = acc.jwt;
+  document.getElementById('fCsrf').value = acc.csrf_secret;
+  document.getElementById('fPrimary').value = acc.primary_chicken;
+  document.getElementById('fBackups').value = backups.join(', ');
+  document.getElementById('fItems').value = items.join(', ');
+  document.getElementById('fBoosters').value = acc.min_boosters;
+  document.getElementById('fMinAffection').value = acc.min_affection;
+  document.getElementById('fCheckAffection').checked = acc.check_affection;
+  document.getElementById('fUseBackups').checked = acc.use_backup_chickens;
+  document.getElementById('fImmortal').checked = acc.require_immortal;
+  document.getElementById('accountModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('accountModal').classList.remove('active');
+}
+
+function parseIntList(str) {
+  return str.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+}
+
+async function saveAccount() {
+  const editId = document.getElementById('editAccountId').value;
+  const data = {
+    nickname: document.getElementById('fNickname').value.trim(),
+    address: document.getElementById('fAddress').value.trim(),
+    jwt: document.getElementById('fJwt').value.trim(),
+    csrf_secret: document.getElementById('fCsrf').value.trim(),
+    primary_chicken: parseInt(document.getElementById('fPrimary').value),
+    backup_chickens: parseIntList(document.getElementById('fBackups').value),
+    battle_items: parseIntList(document.getElementById('fItems').value),
+    min_boosters: parseInt(document.getElementById('fBoosters').value) || 4,
+    min_affection: parseInt(document.getElementById('fMinAffection').value) || 90,
+    check_affection: document.getElementById('fCheckAffection').checked,
+    use_backup_chickens: document.getElementById('fUseBackups').checked,
+    require_immortal: document.getElementById('fImmortal').checked,
+  };
+  
+  if (!data.nickname || !data.address || !data.jwt || !data.primary_chicken) {
+    alert('Please fill in all required fields');
+    return;
+  }
+  
+  try {
+    if (editId) {
+      await api('PUT', `/api/accounts/${editId}`, data);
+    } else {
+      const result = await api('POST', '/api/accounts', data);
+      selectedId = result.id;
+    }
+    closeModal();
+    await loadAccounts();
+    if (selectedId) selectAccount(selectedId);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function deleteAccount() {
+  if (!confirm('Delete this account and all match history?')) return;
+  try {
+    await api('DELETE', `/api/accounts/${selectedId}`);
+    selectedId = null;
+    document.getElementById('accountView').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'block';
+    await loadAccounts();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// =========================
+// Helpers
+// =========================
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// =========================
+// Init
+// =========================
+(async function init() {
+  if (token) {
+    try {
+      await api('GET', '/api/accounts');
+      showApp();
+    } catch {
+      showLogin();
+    }
+  } else {
+    showLogin();
+  }
+  
+  // Refresh accounts every 30s
+  setInterval(async () => {
+    if (token && document.getElementById('app').classList.contains('active')) {
+      await loadAccounts();
+    }
+  }, 30000);
+})();
+</script>
+
+</body>
+</html>
