@@ -45,6 +45,7 @@ def init_db():
             address TEXT NOT NULL,
             jwt TEXT NOT NULL,
             csrf_secret TEXT NOT NULL DEFAULT 'VeTXMPhBzWCRRpSJe8Yz7VFm',
+            refresh_token TEXT NOT NULL DEFAULT '',
             primary_chicken INTEGER NOT NULL,
             backup_chickens TEXT NOT NULL DEFAULT '[]',
             battle_items TEXT NOT NULL DEFAULT '[54, 97, 90, 47, 45, 98]',
@@ -90,12 +91,14 @@ HP_API = "https://chicken-api-ivory.vercel.app/api/game/{token_id}"
 MATCHES_API = f"{APP_URL}/api/proxy/game/matches?tokenId={{token_id}}"
 HEAL_API = f"{APP_URL}/api/proxy/heal"
 CSRF_TOKEN_URL = f"{APP_URL}/csrf-token"
+DAILY_RUB_URL = f"{APP_URL}/api/chickens/daily-rub"
 MATCHMAKE_URL = f"{BASE_URL}/matchmake/joinOrCreate/matchmaking"
 CHICKEN_API = "https://chicken-animation.vercel.app/api/proxy/game?tokenId={token_id}"
 
 QUEUE_DELAY = 60
 MATCH_TIMEOUT = 900
 POLL_INTERVAL = 10
+DAILY_RUB_HOUR = 8  # 8am PHT (UTC+8 = 0 UTC)
 
 # =========================
 # Bot Manager
@@ -171,6 +174,127 @@ def jwt_hours_left(token: str) -> float:
         return max(0.0, (exp - time.time()) / 3600.0)
     except:
         return 9999.0
+
+def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: str) -> Optional[str]:
+    """
+    Refresh JWT by mimicking a full browser page load.
+    The server middleware reads the refresh_token cookie and sets a new jwt cookie.
+    Returns the new JWT or None if refresh failed.
+    """
+    try:
+        s = requests.Session()
+        s.cookies.update({
+            "jwt": jwt_token,
+            "refresh_token": refresh_token,
+            "_csrfSecret": csrf_secret,
+        })
+        s.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+        })
+        
+        # Load the homepage like a browser would
+        r = s.get(APP_URL + "/", timeout=30, allow_redirects=True)
+        
+        # Check if the server set a new JWT cookie
+        new_jwt = s.cookies.get("jwt")
+        if new_jwt and new_jwt != jwt_token:
+            hrs = jwt_hours_left(new_jwt)
+            if hrs > 1:  # Verify it's actually a fresh token
+                s.close()
+                return new_jwt
+        
+        # Also try loading a specific page
+        r = s.get(APP_URL + "/inventory", timeout=30, allow_redirects=True)
+        new_jwt = s.cookies.get("jwt")
+        if new_jwt and new_jwt != jwt_token:
+            hrs = jwt_hours_left(new_jwt)
+            if hrs > 1:
+                s.close()
+                return new_jwt
+        
+        s.close()
+    except Exception as e:
+        pass
+    return None
+
+def update_account_jwt(account_id: int, new_jwt: str, new_refresh: str = None):
+    """Save refreshed JWT (and optionally new refresh token) to database."""
+    try:
+        conn = get_db()
+        if new_refresh:
+            conn.execute("UPDATE accounts SET jwt = ?, refresh_token = ?, updated_at = datetime('now') WHERE id = ?",
+                        (new_jwt, new_refresh, account_id))
+        else:
+            conn.execute("UPDATE accounts SET jwt = ?, updated_at = datetime('now') WHERE id = ?",
+                        (new_jwt, account_id))
+        conn.commit()
+        conn.close()
+    except: pass
+
+def do_daily_rub(jwt_token: str, refresh_token: str, csrf_secret: str) -> Tuple[bool, str]:
+    """
+    Perform daily rub for all chickens.
+    POST /api/chickens/daily-rub with CSRF token, no body.
+    Returns (success, message).
+    """
+    try:
+        s = requests.Session()
+        s.cookies.update({
+            "jwt": jwt_token,
+            "refresh_token": refresh_token,
+            "_csrfSecret": csrf_secret,
+        })
+        s.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Origin": APP_URL,
+            "Referer": APP_URL + "/rub",
+        })
+        
+        # Get CSRF token first
+        csrf_token = None
+        for attempt in range(3):
+            try:
+                r = s.get(CSRF_TOKEN_URL, timeout=30)
+                if r.status_code == 200:
+                    csrf_token = r.json().get("csrfToken")
+                    if csrf_token: break
+            except: pass
+            time.sleep(1.5)
+        
+        if not csrf_token:
+            s.close()
+            return False, "Could not get CSRF token"
+        
+        s.cookies.update({"_csrf": csrf_token})
+        
+        # POST daily rub (empty body)
+        headers = {
+            "Content-Type": "application/json",
+            "x-csrf-token": csrf_token,
+        }
+        r = s.post(DAILY_RUB_URL, headers=headers, timeout=30)
+        s.close()
+        
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status"):
+                # Extract feather info
+                summary = data.get("data", {}).get("data", {}).get("summary", {})
+                feathers = summary.get("totalFeathers", 0)
+                chickens = summary.get("totalChickens", 0)
+                return True, f"Rubbed {chickens} chickens, earned {feathers} feathers"
+            return False, data.get("message", "Unknown error")
+        else:
+            return False, f"HTTP {r.status_code}"
+    except Exception as e:
+        return False, str(e)
+
+# Daily rub scheduler state
+daily_rub_last_date: Dict[int, str] = {}  # account_id -> last rub date "YYYY-MM-DD"
 
 def get_hp(session: requests.Session, token_id: int) -> Tuple[Optional[int], Optional[int]]:
     for attempt in range(3):
@@ -461,6 +585,9 @@ async def run_bot_loop(bot: BotInstance):
     bot.log(f"Primary: #{primary_id} | Backups: {backups}")
     bot.log(f"Battle Items: {battle_items_priority}")
     
+    # Track refresh token
+    refresh_token = config.get("refresh_token", "")
+    
     while bot.running:
         try:
             bot.current_round += 1
@@ -468,10 +595,34 @@ async def run_bot_loop(bot: BotInstance):
             bot.log(f"── ROUND {round_num} ──")
             await broadcast_stats(bot.account_id)
             
-            # Check JWT
+            # === AUTO JWT REFRESH ===
             hrs = jwt_hours_left(jwt_token)
-            if hrs < 1:
+            if hrs < 2 and refresh_token:
+                bot.log(f"🔑 JWT expires in {hrs:.1f}h, refreshing...", "warn")
+                new_jwt = await asyncio.to_thread(refresh_jwt_via_page_load, jwt_token, refresh_token, csrf_secret)
+                if new_jwt:
+                    jwt_token = new_jwt
+                    # Check if we also got a new refresh token
+                    update_account_jwt(bot.account_id, new_jwt)
+                    bot.log(f"✓ JWT refreshed! New expiry: {jwt_hours_left(new_jwt):.1f}h", "success")
+                else:
+                    bot.log(f"✗ JWT refresh failed! {hrs:.1f}h remaining", "error")
+            elif hrs < 1:
                 bot.log(f"⚠ JWT expires in {int(hrs*60)}min!", "error")
+            
+            # === DAILY RUB (8am PHT = 0:00 UTC) ===
+            pht_now = datetime.now(timezone(timedelta(hours=8)))
+            today_str = pht_now.strftime("%Y-%m-%d")
+            rub_done_today = daily_rub_last_date.get(bot.account_id) == today_str
+            
+            if not rub_done_today and pht_now.hour >= DAILY_RUB_HOUR:
+                bot.log(f"🫳 Daily rub time! ({pht_now.strftime('%I:%M %p')} PHT)")
+                success, msg = await asyncio.to_thread(do_daily_rub, jwt_token, refresh_token, csrf_secret)
+                if success:
+                    bot.log(f"✓ {msg}", "success")
+                    daily_rub_last_date[bot.account_id] = today_str
+                else:
+                    bot.log(f"✗ Rub failed: {msg}", "error")
             
             # Try primary chicken
             active_id = None
@@ -687,6 +838,7 @@ class AccountCreate(BaseModel):
     nickname: str
     address: str
     jwt: str
+    refresh_token: str = ""
     csrf_secret: str = "VeTXMPhBzWCRRpSJe8Yz7VFm"
     primary_chicken: int
     backup_chickens: List[int] = []
@@ -723,10 +875,10 @@ async def list_accounts(_=Depends(verify_token)):
 async def create_account(acc: AccountCreate, _=Depends(verify_token)):
     conn = get_db()
     conn.execute(
-        """INSERT INTO accounts (nickname, address, jwt, csrf_secret, primary_chicken, backup_chickens, battle_items,
+        """INSERT INTO accounts (nickname, address, jwt, refresh_token, csrf_secret, primary_chicken, backup_chickens, battle_items,
            check_affection, use_backup_chickens, require_immortal, min_affection, min_boosters)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (acc.nickname, acc.address, acc.jwt, acc.csrf_secret, acc.primary_chicken,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (acc.nickname, acc.address, acc.jwt, acc.refresh_token, acc.csrf_secret, acc.primary_chicken,
          json.dumps(acc.backup_chickens), json.dumps(acc.battle_items),
          int(acc.check_affection), int(acc.use_backup_chickens), int(acc.require_immortal),
          acc.min_affection, acc.min_boosters)
@@ -742,7 +894,7 @@ async def update_account(account_id: int, request: Request, _=Depends(verify_tok
     conn = get_db()
     
     # Build update query dynamically
-    allowed = ["nickname", "address", "jwt", "csrf_secret", "primary_chicken", "backup_chickens",
+    allowed = ["nickname", "address", "jwt", "refresh_token", "csrf_secret", "primary_chicken", "backup_chickens",
                "battle_items", "check_affection", "use_backup_chickens", "require_immortal",
                "min_affection", "min_boosters", "enabled"]
     sets = []
