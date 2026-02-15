@@ -493,6 +493,11 @@ label {
     </div>
     
     <div class="form-group">
+      <label>Refresh Token</label>
+      <textarea id="fRefreshToken" placeholder="eyJhb... (from browser cookies, enables auto-refresh)"></textarea>
+    </div>
+    
+    <div class="form-group">
       <label>CSRF Secret</label>
       <input type="text" id="fCsrf" placeholder="VeTXMPhBzWCRRpSJe8Yz7VFm" value="VeTXMPhBzWCRRpSJe8Yz7VFm">
     </div>
@@ -679,6 +684,7 @@ function renderAccountView(acc) {
   document.getElementById('configSummary').innerHTML = `
     <div><strong>Wallet:</strong> <code style="font-size:11px;color:var(--text2)">${acc.address}</code></div>
     <div><strong>JWT:</strong> <span style="color:${acc.jwt_hours_left < 2 ? 'var(--red)' : 'var(--green)'}">${acc.jwt_hours_left.toFixed(1)}h remaining</span></div>
+    <div><strong>Refresh Token:</strong> ${acc.refresh_token ? '<span style="color:var(--green)">Set (auto-refresh enabled)</span>' : '<span style="color:var(--red)">Not set (manual JWT updates needed)</span>'}</div>
     <div><strong>Primary:</strong> #${acc.primary_chicken}</div>
     <div><strong>Backups:</strong> ${acc.use_backup_chickens ? backups.map(b => '#'+b).join(', ') || 'None' : '<span style="color:var(--red)">Disabled</span>'}</div>
     <div><strong>Battle Items:</strong> ${items.join(' → ') || 'None'}</div>
@@ -781,6 +787,7 @@ function showAddAccount() {
   document.getElementById('fNickname').value = '';
   document.getElementById('fAddress').value = '';
   document.getElementById('fJwt').value = '';
+  document.getElementById('fRefreshToken').value = '';
   document.getElementById('fCsrf').value = 'VeTXMPhBzWCRRpSJe8Yz7VFm';
   document.getElementById('fPrimary').value = '';
   document.getElementById('fBackups').value = '';
@@ -805,6 +812,7 @@ function showEditAccount() {
   document.getElementById('fNickname').value = acc.nickname;
   document.getElementById('fAddress').value = acc.address;
   document.getElementById('fJwt').value = acc.jwt;
+  document.getElementById('fRefreshToken').value = acc.refresh_token || '';
   document.getElementById('fCsrf').value = acc.csrf_secret;
   document.getElementById('fPrimary').value = acc.primary_chicken;
   document.getElementById('fBackups').value = backups.join(', ');
@@ -831,6 +839,7 @@ async function saveAccount() {
     nickname: document.getElementById('fNickname').value.trim(),
     address: document.getElementById('fAddress').value.trim(),
     jwt: document.getElementById('fJwt').value.trim(),
+    refresh_token: document.getElementById('fRefreshToken').value.trim(),
     csrf_secret: document.getElementById('fCsrf').value.trim(),
     primary_chicken: parseInt(document.getElementById('fPrimary').value),
     backup_chickens: parseIntList(document.getElementById('fBackups').value),
