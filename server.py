@@ -258,7 +258,7 @@ def do_daily_rub(jwt_token: str, refresh_token: str, csrf_secret: str) -> Tuple[
         csrf_token = None
         for attempt in range(3):
             try:
-                r = s.get(CSRF_TOKEN_URL, timeout=30)
+                r = s.get(CSRF_TOKEN_URL, timeout=120)
                 if r.status_code == 200:
                     csrf_token = r.json().get("csrfToken")
                     if csrf_token: break
@@ -276,7 +276,7 @@ def do_daily_rub(jwt_token: str, refresh_token: str, csrf_secret: str) -> Tuple[
             "Content-Type": "application/json",
             "x-csrf-token": csrf_token,
         }
-        r = s.post(DAILY_RUB_URL, headers=headers, timeout=30)
+        r = s.post(DAILY_RUB_URL, headers=headers, timeout=120)
         s.close()
         
         if r.status_code == 200:
