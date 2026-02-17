@@ -179,45 +179,61 @@ def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: s
     """
     Refresh JWT by mimicking a full browser page load.
     The server middleware reads the refresh_token cookie and sets a new jwt cookie.
+    Tries both chickensaga.com and sabongsaga.com domains.
     Returns the new JWT or None if refresh failed.
     """
-    try:
-        s = requests.Session()
-        s.cookies.update({
-            "jwt": jwt_token,
-            "refresh_token": refresh_token,
-            "_csrfSecret": csrf_secret,
-        })
-        s.headers.update({
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-        })
-        
-        # Load the homepage like a browser would
-        r = s.get(APP_URL + "/", timeout=30, allow_redirects=True)
-        
-        # Check if the server set a new JWT cookie
-        new_jwt = s.cookies.get("jwt")
-        if new_jwt and new_jwt != jwt_token:
-            hrs = jwt_hours_left(new_jwt)
-            if hrs > 1:  # Verify it's actually a fresh token
-                s.close()
-                return new_jwt
-        
-        # Also try loading a specific page
-        r = s.get(APP_URL + "/inventory", timeout=30, allow_redirects=True)
-        new_jwt = s.cookies.get("jwt")
-        if new_jwt and new_jwt != jwt_token:
-            hrs = jwt_hours_left(new_jwt)
-            if hrs > 1:
-                s.close()
-                return new_jwt
-        
-        s.close()
-    except Exception as e:
-        pass
+    domains = [
+        "https://app.chickensaga.com",
+        "https://app.sabongsaga.com",
+    ]
+    
+    for domain in domains:
+        try:
+            s = requests.Session()
+            s.cookies.update({
+                "jwt": jwt_token,
+                "refresh_token": refresh_token,
+                "_csrfSecret": csrf_secret,
+            })
+            s.headers.update({
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+            })
+            
+            # Try homepage
+            r = s.get(domain + "/", timeout=30, allow_redirects=True)
+            new_jwt = s.cookies.get("jwt")
+            if new_jwt and new_jwt != jwt_token:
+                hrs = jwt_hours_left(new_jwt)
+                if hrs > 1:
+                    # Also check for new refresh token
+                    new_rt = s.cookies.get("refresh_token")
+                    s.close()
+                    return new_jwt
+            
+            # Try inventory page
+            r = s.get(domain + "/inventory", timeout=30, allow_redirects=True)
+            new_jwt = s.cookies.get("jwt")
+            if new_jwt and new_jwt != jwt_token:
+                hrs = jwt_hours_left(new_jwt)
+                if hrs > 1:
+                    s.close()
+                    return new_jwt
+            
+            # Try auth/me endpoint
+            r = s.get(domain + "/api/auth/me", timeout=30)
+            new_jwt = s.cookies.get("jwt")
+            if new_jwt and new_jwt != jwt_token:
+                hrs = jwt_hours_left(new_jwt)
+                if hrs > 1:
+                    s.close()
+                    return new_jwt
+            
+            s.close()
+        except:
+            pass
     return None
 
 def update_account_jwt(account_id: int, new_jwt: str, new_refresh: str = None):
@@ -254,7 +270,7 @@ def do_daily_rub(jwt_token: str, refresh_token: str, csrf_secret: str) -> Tuple[
             "Referer": APP_URL + "/rub",
         })
         
-        # Get CSRF token first
+        # Get CSRF token
         csrf_token = None
         for attempt in range(3):
             try:
@@ -263,7 +279,11 @@ def do_daily_rub(jwt_token: str, refresh_token: str, csrf_secret: str) -> Tuple[
                     csrf_token = r.json().get("csrfToken")
                     if csrf_token: break
             except: pass
-            time.sleep(1.5)
+            time.sleep(2)
+        
+        if not csrf_token:
+            s.close()
+            return False, "Could not get CSRF token"
         
         if not csrf_token:
             s.close()
@@ -602,13 +622,12 @@ async def run_bot_loop(bot: BotInstance):
                 new_jwt = await asyncio.to_thread(refresh_jwt_via_page_load, jwt_token, refresh_token, csrf_secret)
                 if new_jwt:
                     jwt_token = new_jwt
-                    # Check if we also got a new refresh token
                     update_account_jwt(bot.account_id, new_jwt)
                     bot.log(f"✓ JWT refreshed! New expiry: {jwt_hours_left(new_jwt):.1f}h", "success")
                 else:
-                    bot.log(f"✗ JWT refresh failed! {hrs:.1f}h remaining", "error")
-            elif hrs < 1:
-                bot.log(f"⚠ JWT expires in {int(hrs*60)}min!", "error")
+                    bot.log(f"✗ JWT refresh failed! {hrs:.1f}h remaining. Update JWT manually in dashboard.", "error")
+            elif hrs < 1 and not refresh_token:
+                bot.log(f"⚠ JWT expires in {int(hrs*60)}min! No refresh token set.", "error")
             
             # === DAILY RUB (8am PHT = 0:00 UTC) ===
             pht_now = datetime.now(timezone(timedelta(hours=8)))
