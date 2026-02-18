@@ -177,63 +177,70 @@ def jwt_hours_left(token: str) -> float:
 
 def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: str) -> Optional[str]:
     """
-    Refresh JWT by mimicking a full browser page load.
-    The server middleware reads the refresh_token cookie and sets a new jwt cookie.
-    Tries both chickensaga.com and sabongsaga.com domains.
+    Refresh JWT by loading app.chickensaga.com in a headless browser.
+    The Next.js middleware reads the refresh_token cookie and sets a new jwt cookie.
     Returns the new JWT or None if refresh failed.
     """
-    domains = [
-        "https://app.chickensaga.com",
-        "https://app.sabongsaga.com",
-    ]
-    
-    for domain in domains:
-        try:
-            s = requests.Session()
-            s.cookies.update({
-                "jwt": jwt_token,
-                "refresh_token": refresh_token,
-                "_csrfSecret": csrf_secret,
-            })
-            s.headers.update({
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-            })
+    try:
+        from playwright.sync_api import sync_playwright
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
             
-            # Try homepage
-            r = s.get(domain + "/", timeout=30, allow_redirects=True)
-            new_jwt = s.cookies.get("jwt")
+            # Set cookies before visiting
+            context.add_cookies([
+                {"name": "jwt", "value": jwt_token, "domain": "app.chickensaga.com", "path": "/"},
+                {"name": "refresh_token", "value": refresh_token, "domain": "app.chickensaga.com", "path": "/"},
+                {"name": "_csrfSecret", "value": csrf_secret, "domain": "app.chickensaga.com", "path": "/"},
+            ])
+            
+            page = context.new_page()
+            page.goto("https://app.chickensaga.com/", wait_until="networkidle", timeout=60000)
+            
+            # Wait a moment for any client-side cookie updates
+            page.wait_for_timeout(3000)
+            
+            # Get cookies
+            cookies = context.cookies("https://app.chickensaga.com")
+            new_jwt = None
+            new_rt = None
+            for cookie in cookies:
+                if cookie["name"] == "jwt":
+                    new_jwt = cookie["value"]
+                elif cookie["name"] == "refresh_token":
+                    new_rt = cookie["value"]
+            
+            browser.close()
+            
             if new_jwt and new_jwt != jwt_token:
                 hrs = jwt_hours_left(new_jwt)
                 if hrs > 1:
-                    # Also check for new refresh token
-                    new_rt = s.cookies.get("refresh_token")
-                    s.close()
                     return new_jwt
             
-            # Try inventory page
-            r = s.get(domain + "/inventory", timeout=30, allow_redirects=True)
-            new_jwt = s.cookies.get("jwt")
+            # If JWT didn't change, try sabongsaga.com too
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            context.add_cookies([
+                {"name": "jwt", "value": jwt_token, "domain": "app.sabongsaga.com", "path": "/"},
+                {"name": "refresh_token", "value": refresh_token, "domain": "app.sabongsaga.com", "path": "/"},
+                {"name": "_csrfSecret", "value": csrf_secret, "domain": "app.sabongsaga.com", "path": "/"},
+            ])
+            page = context.new_page()
+            page.goto("https://app.sabongsaga.com/", wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(3000)
+            cookies = context.cookies("https://app.sabongsaga.com")
+            for cookie in cookies:
+                if cookie["name"] == "jwt":
+                    new_jwt = cookie["value"]
+            browser.close()
+            
             if new_jwt and new_jwt != jwt_token:
                 hrs = jwt_hours_left(new_jwt)
                 if hrs > 1:
-                    s.close()
                     return new_jwt
-            
-            # Try auth/me endpoint
-            r = s.get(domain + "/api/auth/me", timeout=30)
-            new_jwt = s.cookies.get("jwt")
-            if new_jwt and new_jwt != jwt_token:
-                hrs = jwt_hours_left(new_jwt)
-                if hrs > 1:
-                    s.close()
-                    return new_jwt
-            
-            s.close()
-        except:
-            pass
+    except Exception as e:
+        print(f"[Refresh] Error: {e}")
     return None
 
 def update_account_jwt(account_id: int, new_jwt: str, new_refresh: str = None):
