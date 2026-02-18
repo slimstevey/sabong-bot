@@ -177,70 +177,95 @@ def jwt_hours_left(token: str) -> float:
 
 def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: str) -> Optional[str]:
     """
-    Refresh JWT by loading app.chickensaga.com in a headless browser.
-    The Next.js middleware reads the refresh_token cookie and sets a new jwt cookie.
+    Refresh JWT by calling /api/auth/me with refresh_token cookie.
+    The server returns new JWT and refresh_token in Set-Cookie headers
+    when the JWT is expired.
     Returns the new JWT or None if refresh failed.
     """
-    try:
-        from playwright.sync_api import sync_playwright
-        
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
+    domains = [
+        "https://app.chickensaga.com",
+        "https://app.sabongsaga.com",
+    ]
+    
+    for domain in domains:
+        try:
+            s = requests.Session()
+            s.cookies.update({
+                "jwt": jwt_token,
+                "refresh_token": refresh_token,
+                "_csrfSecret": csrf_secret,
+            })
+            s.headers.update({
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": domain,
+                "Referer": domain + "/",
+            })
             
-            # Set cookies before visiting
-            context.add_cookies([
-                {"name": "jwt", "value": jwt_token, "domain": "app.chickensaga.com", "path": "/"},
-                {"name": "refresh_token", "value": refresh_token, "domain": "app.chickensaga.com", "path": "/"},
-                {"name": "_csrfSecret", "value": csrf_secret, "domain": "app.chickensaga.com", "path": "/"},
-            ])
+            # Call /api/auth/me — server should set new cookies if JWT is expired
+            r = s.get(domain + "/api/auth/me", timeout=30)
             
-            page = context.new_page()
-            page.goto("https://app.chickensaga.com/", wait_until="networkidle", timeout=60000)
-            
-            # Wait a moment for any client-side cookie updates
-            page.wait_for_timeout(3000)
-            
-            # Get cookies
-            cookies = context.cookies("https://app.chickensaga.com")
+            # Check for new JWT in response cookies
             new_jwt = None
             new_rt = None
-            for cookie in cookies:
-                if cookie["name"] == "jwt":
-                    new_jwt = cookie["value"]
-                elif cookie["name"] == "refresh_token":
-                    new_rt = cookie["value"]
             
-            browser.close()
+            # Method 1: Check session cookies (requests auto-captures Set-Cookie)
+            for cookie in s.cookies:
+                if cookie.name == "jwt" and cookie.value != jwt_token:
+                    new_jwt = cookie.value
+                elif cookie.name == "refresh_token" and cookie.value != refresh_token:
+                    new_rt = cookie.value
             
-            if new_jwt and new_jwt != jwt_token:
+            # Method 2: Check raw Set-Cookie headers
+            if not new_jwt:
+                set_cookies = r.headers.get("Set-Cookie", "") or ""
+                # Also check case-insensitive
+                for header_name, header_val in r.headers.items():
+                    if header_name.lower() == "set-cookie":
+                        if "jwt=" in header_val:
+                            import re as _re
+                            m = _re.search(r'jwt=([^;]+)', header_val)
+                            if m and m.group(1) != jwt_token:
+                                new_jwt = m.group(1)
+                        if "refresh_token=" in header_val:
+                            m = _re.search(r'refresh_token=([^;]+)', header_val)
+                            if m and m.group(1) != refresh_token:
+                                new_rt = m.group(1)
+            
+            # Method 3: Check response body for tokens
+            if not new_jwt:
+                try:
+                    data = r.json()
+                    # Check if JWT is in the response body
+                    if isinstance(data, dict):
+                        for key in ("jwt", "token", "accessToken", "access_token"):
+                            val = data.get(key)
+                            if val and isinstance(val, str) and val != jwt_token and val.startswith("eyJ"):
+                                new_jwt = val
+                        # Check nested
+                        for nk in ("data", "result", "auth"):
+                            nested = data.get(nk)
+                            if isinstance(nested, dict):
+                                for key in ("jwt", "token", "accessToken", "access_token"):
+                                    val = nested.get(key)
+                                    if val and isinstance(val, str) and val != jwt_token and val.startswith("eyJ"):
+                                        new_jwt = val
+                except: pass
+            
+            if new_jwt:
                 hrs = jwt_hours_left(new_jwt)
                 if hrs > 1:
+                    # Also save new refresh token if we got one
+                    if new_rt:
+                        pass  # TODO: save new refresh token
+                    s.close()
                     return new_jwt
             
-            # If JWT didn't change, try sabongsaga.com too
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
-            context.add_cookies([
-                {"name": "jwt", "value": jwt_token, "domain": "app.sabongsaga.com", "path": "/"},
-                {"name": "refresh_token", "value": refresh_token, "domain": "app.sabongsaga.com", "path": "/"},
-                {"name": "_csrfSecret", "value": csrf_secret, "domain": "app.sabongsaga.com", "path": "/"},
-            ])
-            page = context.new_page()
-            page.goto("https://app.sabongsaga.com/", wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(3000)
-            cookies = context.cookies("https://app.sabongsaga.com")
-            for cookie in cookies:
-                if cookie["name"] == "jwt":
-                    new_jwt = cookie["value"]
-            browser.close()
-            
-            if new_jwt and new_jwt != jwt_token:
-                hrs = jwt_hours_left(new_jwt)
-                if hrs > 1:
-                    return new_jwt
-    except Exception as e:
-        print(f"[Refresh] Error: {e}")
+            s.close()
+        except Exception as e:
+            print(f"[Refresh] Error with {domain}: {e}")
+    
     return None
 
 def update_account_jwt(account_id: int, new_jwt: str, new_refresh: str = None):
@@ -624,17 +649,17 @@ async def run_bot_loop(bot: BotInstance):
             
             # === AUTO JWT REFRESH ===
             hrs = jwt_hours_left(jwt_token)
-            if hrs < 2 and refresh_token:
-                bot.log(f"🔑 JWT expires in {hrs:.1f}h, refreshing...", "warn")
+            if hrs <= 0 and refresh_token:
+                bot.log(f"🔑 JWT expired! Refreshing...", "warn")
                 new_jwt = await asyncio.to_thread(refresh_jwt_via_page_load, jwt_token, refresh_token, csrf_secret)
                 if new_jwt:
                     jwt_token = new_jwt
                     update_account_jwt(bot.account_id, new_jwt)
                     bot.log(f"✓ JWT refreshed! New expiry: {jwt_hours_left(new_jwt):.1f}h", "success")
                 else:
-                    bot.log(f"✗ JWT refresh failed! {hrs:.1f}h remaining. Update JWT manually in dashboard.", "error")
-            elif hrs < 1 and not refresh_token:
-                bot.log(f"⚠ JWT expires in {int(hrs*60)}min! No refresh token set.", "error")
+                    bot.log(f"✗ JWT refresh failed! Update JWT manually in dashboard.", "error")
+            elif hrs <= 0 and not refresh_token:
+                bot.log(f"⚠ JWT expired! No refresh token set.", "error")
             
             # === DAILY RUB (8am PHT = 0:00 UTC) ===
             pht_now = datetime.now(timezone(timedelta(hours=8)))
