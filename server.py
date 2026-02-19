@@ -175,6 +175,16 @@ def jwt_hours_left(token: str) -> float:
     except:
         return 9999.0
 
+def refresh_token_hours_left(token: str) -> float:
+    """Check how many hours until the refresh token expires."""
+    try:
+        data = jwt_lib.decode(token, options={"verify_signature": False})
+        exp = data.get("exp")
+        if not exp: return 9999.0
+        return max(0.0, (exp - time.time()) / 3600.0)
+    except:
+        return 9999.0
+
 def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: str) -> Optional[str]:
     """
     Refresh JWT by calling /api/auth/me with refresh_token cookie.
@@ -661,6 +671,17 @@ async def run_bot_loop(bot: BotInstance):
             elif hrs <= 0 and not refresh_token:
                 bot.log(f"⚠ JWT expired! No refresh token set.", "error")
             
+            # === REFRESH TOKEN EXPIRY WARNING ===
+            if refresh_token and round_num % 50 == 1:  # Check every 50 rounds
+                rt_hrs = refresh_token_hours_left(refresh_token)
+                rt_days = rt_hrs / 24
+                if rt_hrs <= 0:
+                    bot.log(f"🚨 REFRESH TOKEN EXPIRED! Update tokens in dashboard NOW!", "error")
+                elif rt_days <= 1:
+                    bot.log(f"⚠ Refresh token expires in {rt_hrs:.0f}h! Update tokens soon!", "error")
+                elif rt_days <= 2:
+                    bot.log(f"⚠ Refresh token expires in {rt_days:.1f} days", "warn")
+            
             # === DAILY RUB (8am PHT = 0:00 UTC) ===
             pht_now = datetime.now(timezone(timedelta(hours=8)))
             today_str = pht_now.strftime("%Y-%m-%d")
@@ -919,6 +940,7 @@ async def list_accounts(_=Depends(verify_token)):
         acc["bot_running"] = bot.running if bot else False
         acc["bot_stats"] = bot.stats if bot else None
         acc["jwt_hours_left"] = jwt_hours_left(acc["jwt"])
+        acc["rt_hours_left"] = refresh_token_hours_left(acc.get("refresh_token", "")) if acc.get("refresh_token") else None
         accounts.append(acc)
     return accounts
 
