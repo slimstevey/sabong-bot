@@ -646,7 +646,7 @@ function renderAccountList() {
   el.innerHTML = accounts.map(a => `
     <div class="account-card ${a.id === selectedId ? 'active' : ''}" onclick="selectAccount(${a.id})">
       <div class="name"><span class="status ${a.bot_running ? 'status-running' : 'status-stopped'}"></span>${a.nickname}</div>
-      <div class="info">#${a.primary_chicken} · JWT: ${a.jwt_hours_left.toFixed(1)}h</div>
+      <div class="info">#${a.primary_chicken} · JWT: ${a.jwt_hours_left.toFixed(1)}h${a.rt_hours_left !== null ? ' · RT: '+(a.rt_hours_left/24).toFixed(1)+'d' : ''}</div>
     </div>
   `).join('');
 }
@@ -684,7 +684,7 @@ function renderAccountView(acc) {
   document.getElementById('configSummary').innerHTML = `
     <div><strong>Wallet:</strong> <code style="font-size:11px;color:var(--text2)">${acc.address}</code></div>
     <div><strong>JWT:</strong> <span style="color:${acc.jwt_hours_left < 2 ? 'var(--red)' : 'var(--green)'}">${acc.jwt_hours_left.toFixed(1)}h remaining</span></div>
-    <div><strong>Refresh Token:</strong> ${acc.refresh_token ? '<span style="color:var(--green)">Set (auto-refresh enabled)</span>' : '<span style="color:var(--red)">Not set (manual JWT updates needed)</span>'}</div>
+    <div><strong>Refresh Token:</strong> ${acc.refresh_token ? (acc.rt_hours_left !== null ? '<span style="color:' + (acc.rt_hours_left < 24 ? 'var(--red)' : acc.rt_hours_left < 48 ? 'var(--yellow)' : 'var(--green)') + '">' + (acc.rt_hours_left/24).toFixed(1) + ' days left</span>' : '<span style="color:var(--green)">Set</span>') : '<span style="color:var(--red)">Not set</span>'}</div>
     <div><strong>Primary:</strong> #${acc.primary_chicken}</div>
     <div><strong>Backups:</strong> ${acc.use_backup_chickens ? backups.map(b => '#'+b).join(', ') || 'None' : '<span style="color:var(--red)">Disabled</span>'}</div>
     <div><strong>Battle Items:</strong> ${items.join(' → ') || 'None'}</div>
