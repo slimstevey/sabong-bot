@@ -185,12 +185,12 @@ def refresh_token_hours_left(token: str) -> float:
     except:
         return 9999.0
 
-def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: str) -> Optional[str]:
+def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Refresh JWT by calling /api/auth/me with refresh_token cookie.
     The server returns new JWT and refresh_token in Set-Cookie headers
     when the JWT is expired.
-    Returns the new JWT or None if refresh failed.
+    Returns (new_jwt, new_refresh_token) or (None, None) if refresh failed.
     """
     domains = [
         "https://app.chickensaga.com",
@@ -216,30 +216,31 @@ def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: s
             # Call /api/auth/me — server should set new cookies if JWT is expired
             r = s.get(domain + "/api/auth/me", timeout=30)
             
+            print(f"[Refresh] {domain} status: {r.status_code}")
+            
             # Check for new JWT in response cookies
             new_jwt = None
             new_rt = None
             
             # Method 1: Check session cookies (requests auto-captures Set-Cookie)
             for cookie in s.cookies:
+                print(f"[Refresh] Cookie: {cookie.name} = {cookie.value[:30]}...")
                 if cookie.name == "jwt" and cookie.value != jwt_token:
                     new_jwt = cookie.value
-                elif cookie.name == "refresh_token" and cookie.value != refresh_token:
+                if cookie.name == "refresh_token" and cookie.value != refresh_token:
                     new_rt = cookie.value
             
             # Method 2: Check raw Set-Cookie headers
             if not new_jwt:
-                set_cookies = r.headers.get("Set-Cookie", "") or ""
-                # Also check case-insensitive
                 for header_name, header_val in r.headers.items():
                     if header_name.lower() == "set-cookie":
+                        print(f"[Refresh] Set-Cookie header: {header_val[:80]}...")
                         if "jwt=" in header_val:
-                            import re as _re
-                            m = _re.search(r'jwt=([^;]+)', header_val)
+                            m = re.search(r'jwt=([^;]+)', header_val)
                             if m and m.group(1) != jwt_token:
                                 new_jwt = m.group(1)
                         if "refresh_token=" in header_val:
-                            m = _re.search(r'refresh_token=([^;]+)', header_val)
+                            m = re.search(r'refresh_token=([^;]+)', header_val)
                             if m and m.group(1) != refresh_token:
                                 new_rt = m.group(1)
             
@@ -247,13 +248,12 @@ def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: s
             if not new_jwt:
                 try:
                     data = r.json()
-                    # Check if JWT is in the response body
+                    print(f"[Refresh] Response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
                     if isinstance(data, dict):
                         for key in ("jwt", "token", "accessToken", "access_token"):
                             val = data.get(key)
                             if val and isinstance(val, str) and val != jwt_token and val.startswith("eyJ"):
                                 new_jwt = val
-                        # Check nested
                         for nk in ("data", "result", "auth"):
                             nested = data.get(nk)
                             if isinstance(nested, dict):
@@ -263,20 +263,19 @@ def refresh_jwt_via_page_load(jwt_token: str, refresh_token: str, csrf_secret: s
                                         new_jwt = val
                 except: pass
             
+            print(f"[Refresh] new_jwt found: {new_jwt is not None}, new_rt found: {new_rt is not None}")
+            
             if new_jwt:
                 hrs = jwt_hours_left(new_jwt)
                 if hrs > 1:
-                    # Also save new refresh token if we got one
-                    if new_rt:
-                        pass  # TODO: save new refresh token
                     s.close()
-                    return new_jwt
+                    return new_jwt, new_rt
             
             s.close()
         except Exception as e:
             print(f"[Refresh] Error with {domain}: {e}")
     
-    return None
+    return None, None
 
 def update_account_jwt(account_id: int, new_jwt: str, new_refresh: str = None):
     """Save refreshed JWT (and optionally new refresh token) to database."""
@@ -661,11 +660,16 @@ async def run_bot_loop(bot: BotInstance):
             hrs = jwt_hours_left(jwt_token)
             if hrs <= 0 and refresh_token:
                 bot.log(f"🔑 JWT expired! Refreshing...", "warn")
-                new_jwt = await asyncio.to_thread(refresh_jwt_via_page_load, jwt_token, refresh_token, csrf_secret)
+                new_jwt, new_rt = await asyncio.to_thread(refresh_jwt_via_page_load, jwt_token, refresh_token, csrf_secret)
                 if new_jwt:
                     jwt_token = new_jwt
-                    update_account_jwt(bot.account_id, new_jwt)
-                    bot.log(f"✓ JWT refreshed! New expiry: {jwt_hours_left(new_jwt):.1f}h", "success")
+                    if new_rt:
+                        refresh_token = new_rt
+                        update_account_jwt(bot.account_id, new_jwt, new_rt)
+                        bot.log(f"✓ JWT refreshed! New expiry: {jwt_hours_left(new_jwt):.1f}h (RT also updated)", "success")
+                    else:
+                        update_account_jwt(bot.account_id, new_jwt)
+                        bot.log(f"✓ JWT refreshed! New expiry: {jwt_hours_left(new_jwt):.1f}h", "success")
                 else:
                     bot.log(f"✗ JWT refresh failed! Update JWT manually in dashboard.", "error")
             elif hrs <= 0 and not refresh_token:
