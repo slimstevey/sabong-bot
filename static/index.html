@@ -792,7 +792,7 @@ function showAddAccount() {
   document.getElementById('fPrimary').value = '';
   document.getElementById('fBackups').value = '';
   document.getElementById('fItems').value = '54, 97, 90, 47, 45, 98';
-  document.getElementById('fBoosters').value = '4';
+  document.getElementById('fBoosters').value = '0';
   document.getElementById('fMinAffection').value = '90';
   document.getElementById('fCheckAffection').checked = false;
   document.getElementById('fUseBackups').checked = true;
@@ -844,7 +844,7 @@ async function saveAccount() {
     primary_chicken: parseInt(document.getElementById('fPrimary').value),
     backup_chickens: parseIntList(document.getElementById('fBackups').value),
     battle_items: parseIntList(document.getElementById('fItems').value),
-    min_boosters: parseInt(document.getElementById('fBoosters').value) || 4,
+    min_boosters: parseInt(document.getElementById('fBoosters').value) >= 0 ? parseInt(document.getElementById('fBoosters').value) : 0,
     min_affection: parseInt(document.getElementById('fMinAffection').value) || 90,
     check_affection: document.getElementById('fCheckAffection').checked,
     use_backup_chickens: document.getElementById('fUseBackups').checked,
