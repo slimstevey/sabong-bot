@@ -486,6 +486,14 @@ def check_chicken_ready(session: requests.Session, token_id: int, config: dict) 
         if config.get("require_immortal", True):
             if not data.get("isImmortal", False):
                 return False, "Not immortal"
+            # Check ambrosia expiry — stop if less than 15 min left
+            expiry = data.get("lastImmortalExpiry")
+            if expiry:
+                try:
+                    mins_left = (int(expiry) - time.time()) / 60
+                    if mins_left < 15:
+                        return False, f"Ambrosia expires in {mins_left:.0f}min (need 15min+)"
+                except: pass
         
         boosters = data.get("boosters", {})
         if isinstance(boosters, dict):
